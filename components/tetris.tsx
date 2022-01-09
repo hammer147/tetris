@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import Modal from 'react-modal'
 import { createStage, willCollide } from '../helpers'
 import { useGameStatus, useInterval, usePlayer, useStage } from '../hooks'
 import Button from './button'
@@ -6,21 +7,23 @@ import Display from './display'
 import Stage from './stage'
 import styles from './tetris.module.css'
 
+Modal.setAppElement('#__next')
+
 const Tetris = () => {
 
   const [dropTime, setDropTime] = useState<number | null>(null)
-  const [gameOver, setGameOver] = useState(false)
+  const [gameOver, setGameOver] = useState(true)
 
   const [player, updatePlayerPos, resetPlayer, rotatePlayer] = usePlayer()
   const [stage, setStage, rowsCleared] = useStage(player, resetPlayer)
-  const [score, setScore, rows, setRows, level, setLevel] = useGameStatus(rowsCleared) // todo: rows increase by 2, why?
+  const [score, setScore, rows, setRows, level, setLevel] = useGameStatus(rowsCleared) // todo: avoid side-effects (see comments in useGameStatus)
 
   // moving left and right
-  const movePlayer = (dir: number) => {
+  const movePlayer = useCallback((dir: number) => {
     if (!willCollide(player, stage, { x: dir, y: 0 })) {
       updatePlayerPos({ x: dir, y: 0, collided: false })
     }
-  }
+  }, [updatePlayerPos, player, stage])
 
   const startGame = () => {
     // reset everything
@@ -33,7 +36,7 @@ const Tetris = () => {
     setLevel(0)
   }
 
-  useEffect(startGame, []) // todo: a modal to start a game and show game over
+  useEffect(startGame, []) // optional todo: a modal to start a game
 
   useEffect(() => {
     if (rows > (level + 1) * 10) {
@@ -42,7 +45,7 @@ const Tetris = () => {
     }
   }, [level, rows, setLevel])
 
-  const drop = () => {
+  const drop = useCallback(() => {
     if (!willCollide(player, stage, { x: 0, y: 1 })) {
       updatePlayerPos({ x: 0, y: 1, collided: false })
     } else {
@@ -53,12 +56,13 @@ const Tetris = () => {
       }
       updatePlayerPos({ x: 0, y: 0, collided: true })
     }
-  }
+  }, [player, stage, updatePlayerPos])
 
-  const dropPlayer = () => {
+  const dropPlayer = useCallback(() => {
     setDropTime(null)
     drop()
-  }
+  }, [setDropTime, drop])
+
 
   // key down
   const handleKeyDown = useCallback(({ key }: KeyboardEvent) => {
@@ -67,7 +71,7 @@ const Tetris = () => {
     else if (!gameOver && key === 'ArrowLeft') movePlayer(-1)
     else if (!gameOver && key === 'ArrowDown') dropPlayer() // clears interval (dropPlayer) until keyup which will reset it (handleKeyUp)
     else if (!gameOver && key === 'ArrowRight') movePlayer(1)
-  }, [player])
+  }, [dropPlayer, gameOver, movePlayer, rotatePlayer, stage])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)
@@ -80,7 +84,7 @@ const Tetris = () => {
   // key up
   const handleKeyUp = useCallback(({ key }: KeyboardEvent) => {
     if (!gameOver && key === 'ArrowDown') setDropTime(1000 / (level + 1) + 200)
-  }, [])
+  }, [gameOver, level])
 
   useEffect(() => {
     window.addEventListener('keyup', handleKeyUp)
@@ -110,6 +114,16 @@ const Tetris = () => {
         <Button type="down" text="&#8595;" handleMouseDown={dropPlayer} handleMouseUp={() => setDropTime(1000 / (level + 1) + 200)} />
         <Button type="right" text="&#8594;" handleMouseDown={() => movePlayer(1)} />
       </div>
+
+      <Modal
+        isOpen={gameOver}
+        className={styles.modal}
+        overlayClassName={styles.overlay}
+      >
+        <h1>Game Over</h1>
+        <h3>Score: {score}</h3>
+        <button onClick={startGame}>Start New Game</button>
+      </Modal>
 
     </div>
   )
